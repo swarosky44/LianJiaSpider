@@ -3,12 +3,23 @@ import scrapy
 import requests
 import re
 import time
+import pymysql
 from BeautifulSoup import BeautifulSoup
 from ..items import LianjiaprojectItem
 
 class LianJiaProject(scrapy.Spider):
     name = 'lianjiaspider'
     start_urls = ['http://sh.lianjia.com/zufang/']
+    conn = pymysql.connect(
+        host='127.0.0.1',
+        unix_socket='/tmp/mysql.sock',
+        user='root',
+        passwd='lisen930120',
+        db='mysql',
+        charset='utf8'
+    )
+    cur = conn.cursor()
+    cur.execute('USE lianjia')
 
     def start_request(self):
         user_agent = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.22 \ Safari/537.36 SE 2.X MetaSr 1.0'
@@ -54,7 +65,7 @@ class LianJiaProject(scrapy.Spider):
                         item['model'] = infoCols[0].find('div', { 'class': 'where' }).findAll('span')[0].string
                         item['area'] = infoCols[0].find('div', { 'class': 'where' }).findAll('span')[1].string.replace('&nbsp;', '')
                         item['watch_num'] = infoCols[2].find('div', { 'class': 'square' }).find('div').find('span', { 'class': 'num' }).string
-                        item['time'] = infoCols[1].findAll('div', { 'class': 'price-pre' })[0].string[0:11]
+                        item['time'] = infoCols[1].findAll('div', { 'class': 'price-pre' })[0].string[0:11].strip('\n')
                         item['price'] = infoCols[1].findAll('span', { 'class': 'num' })[0].string
                         item['link'] = infoTitle.find('a', { 'name': 'selectDetail' })['href']
                         item['city'] = response.meta["id1"]
@@ -62,7 +73,7 @@ class LianJiaProject(scrapy.Spider):
                         mapDic = self.get_latitude(url_detail)
                         item['latitude'] = mapDic['latitude']
                         item['longitude'] = mapDic['longitude']
-                        print('item %s' % item)
+                        self.store_item(item)
                     except Exception:
                         pass
                     yield item
@@ -80,3 +91,13 @@ class LianJiaProject(scrapy.Spider):
         }
         time.sleep(3)
         return mapDic
+
+    def store_item(self, item):
+        try:
+            sql = "INSERT INTO houses (title, community, model, area, watch_num, time, price, link, latitude, longitude, city) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+            self.cur.execute(sql, (item['title'], item['community'], item['model'], item['area'], item['watch_num'], item['time'], item['price'], item['link'], item['latitude'], item['longitude'], item['city']))
+            self.conn.commit()
+        except Exception as e:
+            print(e)
+            cur.close()
+            conn.close()
